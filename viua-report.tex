@@ -383,10 +383,10 @@ jobs:
 
 \begin{itemize}
     \item \textbf{跨平台发布流水线}：推送版本 tag 后，CI 自动在五个目标平台（macOS x86\_64/aarch64、Linux musl x86\_64/aarch64、Windows MSVC）交叉编译 release 二进制，归档产物并自动发布到 GitHub Release，实现一次打 tag、全平台交付；
-    \item \textbf{文档工程化}：实验报告以 git submodule 形式独立成仓，其自身 CI 在每次推送后用 XeLaTeX 自动编译验证报告可构建，随后通过 \texttt{repository\_dispatch} 事件通知主仓库；主仓库的同步工作流（\texttt{latex.yml}）收到事件后自动将子模块指针更新到最新提交，并辅以每 6 小时的定时兜底同步，保证代码与文档始终一致。
+    \item \textbf{文档工程化}：实验报告以 git submodule 形式独立成仓，其自身 CI 在每次推送后用 XeLaTeX 自动编译，验证报告始终可构建；主仓库的同步工作流（\texttt{latex.yml}）每 6 小时定时（并支持手动触发）将子模块指针更新到文档仓库的最新提交，保证代码与文档保持一致。
 \end{itemize}
 
-这套``本地钩子 $\rightarrow$ CI 质量门 $\rightarrow$ 自动发布 $\rightarrow$ 文档联动''的流程使团队协作中的每一次变更都经过统一、可复现的自动化验证。
+这套``本地钩子 $\rightarrow$ CI 质量门 $\rightarrow$ 自动发布 $\rightarrow$ 文档同步''的流程使团队协作中的每一次变更都经过统一、可复现的自动化验证。
 
 \section{实验结果}
 

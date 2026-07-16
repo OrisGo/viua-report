@@ -1,4 +1,4 @@
-name: Compile and Notify Parent
+name: Compile LaTeX
 
 on:
   push:
@@ -23,10 +23,3 @@ jobs:
         with:
           root_file: viua-report.tex
           latexmk_use_xelatex: true
-
-      - name: Notify parent repo
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.VIUA_PAT }}
-          repository: OrisGo/viua
-          event-type: doc-updated
