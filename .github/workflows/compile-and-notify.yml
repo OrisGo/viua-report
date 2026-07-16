@@ -1,0 +1,32 @@
+name: Compile and Notify Parent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.tex'
+      - '**.bib'
+      - '**.cls'
+      - '**.sty'
+      - '**.png'
+      - '**.jpg'
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Compile LaTeX (XeLaTeX)
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: viua-report.tex
+          latexmk_use_xelatex: true
+
+      - name: Notify parent repo
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.VIUA_PAT }}
+          repository: OrisGo/viua
+          event-type: doc-updated
