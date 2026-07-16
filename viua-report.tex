@@ -1,0 +1,670 @@
+%!TeX program = xelatex
+\documentclass{SYSUReport}
+
+% 根据个人情况修改
+\headl{Rust 语言与内存安全设计}
+\headc{}
+\headr{Viua 实验报告}
+\lessonTitle{Rust 语言与内存安全设计}
+\reportTitle{Viua: 终端图片查看与ASCII字符画转换器}
+\stuname{曹煌城 \quad 姚怀宇 \quad 叶嘉豪}
+\stuid{xxx  24336145  xxx}
+\inst{软件工程学院}
+\major{软件工程}
+\date{\today}
+
+% 章节标题格式：section 左对齐 + 中文标号，subsection 用阿拉伯数字
+\ctexset{
+    section = {
+        format = {\raggedright\Large\bfseries},
+        name = {{},、},
+        number = \chinese{section},
+        aftername = {},
+    },
+    subsection = {
+        number = \arabic{subsection},
+    },
+}
+\renewcommand{\thesubsection}{\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+
+% 截图占位符：截图完成后将 \shotbox{...} 替换为对应的 \includegraphics
+\newcommand{\shotbox}[1]{\fbox{\parbox[c][3.2cm][c]{0.92\linewidth}{\centering 待补充截图\\[3pt] \texttt{figures/#1}}}}
+
+% 代码高亮设置
+\lstdefinelanguage{Rust}{
+    keywords={as,break,const,continue,crate,dyn,else,enum,extern,false,fn,for,if,impl,in,let,loop,match,mod,move,mut,pub,ref,return,self,Self,static,struct,super,trait,true,type,unsafe,use,where,while},
+    keywordstyle=\color{blue!70!black}\bfseries,
+    keywords=[2]{u8,u16,u32,u64,usize,i8,i16,i32,i64,isize,f32,f64,bool,char,str,String,Vec,Option,Result,Some,None,Ok,Err,Box},
+    keywordstyle=[2]\color{myteal},
+    comment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{gray}\itshape,
+    morestring=[b]",
+    stringstyle=\color{orange!80!black},
+    sensitive=true,
+}
+\lstset{
+    language=Rust,
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    rulecolor=\color{gray!50},
+    breaklines=true,
+    showstringspaces=false,
+    tabsize=4,
+    captionpos=b,
+    xleftmargin=2em,
+}
+
+\begin{document}
+
+% =============================================
+% Part 1: 封面
+% =============================================
+\cover
+\thispagestyle{empty} % 首页不显示页码
+\clearpage
+
+% =============================================
+% Part 2： 摘要
+% =============================================
+%\begin{abstract}
+%
+%在此填写摘要内容
+%
+%\end{abstract}
+% \thispagestyle{empty} % 摘要页不显示页码
+% \clearpage
+
+
+% =============================================
+% Part 3： 目录页
+% =============================================
+% 重置页码，并使用罗马数字
+\pagenumbering{Roman}
+\setcounter{page}{1}
+\tableofcontents
+\clearpage
+
+% =============================================
+% Part 4： 正文内容
+% =============================================
+% 重置页码，并使用阿拉伯数字
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+%%可选择这里也放一个标题
+%\begin{center}
+%    \title{ \Huge \textbf{{标题}}}
+%\end{center}
+\section{团队成员与分工}
+
+团队成员及分工情况如\autoref{tab:members}所示。
+
+\begin{table}[!htbp]
+    \centering
+    \caption{团队成员与分工}
+    \label{tab:members}
+    \begin{tabular}{ccl}
+        \toprule
+        姓名 & 学号 & \multicolumn{1}{c}{分工} \\
+        \midrule
+        曹煌城 & xxx      & （待填写） \\
+        姚怀宇 & 24336145 & （待填写） \\
+        叶嘉豪 & xxx      & （待填写） \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{项目背景与目标}
+团队成员在使用fastfetch时，发现可以在终端中显示图片或字符艺术。而常见的终端图片显示器往往只实现其中一个功能——要么在终端中只能显示图片，要么只是把图片转为字符画输出。
+
+故本项目：Viua 将两种功能结合在一起，使得用户既能够在终端中查看图片，同时也能够查看字符画艺术。
+
+
+\section{系统设计与实现思路}
+\subsection{整体架构}
+
+Viua 采用分层流水线架构，从命令行输入到终端输出的完整数据流如下：
+
+\begin{center}
+命令行参数/stdin 管道 $\rightarrow$ CLI 解析 $\rightarrow$ 配置构建 $\rightarrow$ 输入解析（URL 下载/目录递归）\\
+$\rightarrow$ 图片解码 $\rightarrow$ 尺寸自适应 $\rightarrow$ 按模式分派渲染 $\rightarrow$ 终端输出
+\end{center}
+
+整体上可划分为五个层次：
+
+\begin{itemize}
+    \item \textbf{配置层}（\texttt{cli.rs}、\texttt{config.rs}）：基于 clap 构建命令行接口，将原始参数解析为强类型的 \texttt{Config} 结构体；
+    \item \textbf{输入层}（\texttt{input.rs}）：统一收集来自命令行参数与 stdin 管道的文件列表，支持 HTTP(S) URL 自动下载至临时文件、目录递归遍历与图片扩展名过滤；
+    \item \textbf{编排层}（\texttt{app.rs}）：逐文件解码图片、计算输出尺寸，并根据视图模式分派到对应的渲染路径，同时负责 GIF 动画播放、文件信息页脚与分隔线输出；
+    \item \textbf{转换层}（\texttt{ascii/}）：将图片按所选算法（亮度映射 / CLAHE 增强 / Sobel 边缘检测）转换为字符画中间表示 \texttt{AsciiArt}；
+    \item \textbf{渲染层}（\texttt{render/}）：通过 \texttt{Renderer<T>} trait 将中间表示渲染为 ANSI truecolor 终端输出；原图与半块模式则委托 viuer 库使用 Sixel/iTerm2/Kitty 图像协议直显。
+\end{itemize}
+
+项目源码结构如下：
+
+\begin{verbatim}
+viua/
+├── Cargo.toml
+└── src/
+    ├── main.rs          # 入口：子命令分派 + 错误处理
+    ├── cli.rs           # CLI 参数定义 (clap)
+    ├── config.rs        # 配置结构体 + ViewMode / Algorithm 枚举
+    ├── input.rs         # 文件收集：stdin / URL / 目录递归
+    ├── app.rs           # 业务编排：遍历文件、分派渲染器
+    ├── ascii/
+    │   ├── mod.rs       # AsciiPixel, AsciiArt, convert() 按算法分派
+    │   ├── lum.rs       # 亮度映射算法
+    │   ├── clahe.rs     # CLAHE 自适应直方图均衡化
+    │   ├── sobel.rs     # Sobel 边缘检测算法
+    │   └── charset.rs   # 默认字符集
+    └── render/
+        ├── mod.rs       # Renderer<T> trait
+        └── ansi.rs      # ANSI truecolor 终端输出
+\end{verbatim}
+
+这种设计使转换算法与输出设备完全解耦：新增一种转换算法只需在 \texttt{ascii/} 下增加一个模块并在 \texttt{Algorithm} 枚举中注册；新增一种输出目标（如 HTML）只需为其实现 \texttt{Renderer<AsciiArt>}。
+
+\subsection{主要模块}
+
+\begin{table}[!htbp]
+    \centering
+    \caption{主要模块及职责}
+    \label{tab:modules}
+    \begin{tabular}{cl}
+        \toprule
+        模块 & \multicolumn{1}{c}{职责} \\
+        \midrule
+        \texttt{main.rs}   & 程序入口：解析子命令、构建配置、收集文件、统一错误出口 \\
+        \texttt{cli.rs}    & 定义全局选项（宽/高、灰度、页脚、递归、GIF 单次播放）与三个子命令 \\
+        \texttt{config.rs} & 将 \texttt{ArgMatches} 转换为 \texttt{Config}，映射算法与字符集 \\
+        \texttt{input.rs}  & 参数/管道输入合并、URL 下载、目录递归与扩展名白名单过滤 \\
+        \texttt{app.rs}    & 尺寸自适应、模式分派、GIF 逐帧播放、页脚与分隔线绘制 \\
+        \texttt{ascii/}    & 三种图片 $\rightarrow$ 字符画转换算法及默认字符集 \\
+        \texttt{render/}   & 渲染抽象 trait 与 ANSI truecolor 实现 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+三种视图模式的分派逻辑位于 \texttt{app.rs}：\texttt{ascii} 模式走自研转换与渲染流水线；\texttt{image} 模式启用 Kitty/iTerm2/Sixel 图像协议直显原图；\texttt{halfblock} 模式关闭图像协议，回退到半块字符 \verb|▀| 渲染（每个字符单元用前景色与背景色表示上下两个像素），保证在任意终端下均可显示。
+
+\subsection{关键数据结构}
+
+配置结构体 \texttt{Config} 是贯穿全程的只读上下文，两个枚举分别建模互斥的视图模式与转换算法，配合 \texttt{match} 的穷尽性检查在编译期杜绝遗漏分支：
+
+\begin{lstlisting}[caption={配置与模式枚举（config.rs / ascii/mod.rs）}]
+pub enum ViewMode { Ascii, Image, HalfBlock }
+
+pub enum Algorithm { Luminance, LuminanceClahe, Sobel }
+
+pub struct Config {
+    pub mode: ViewMode,
+    pub algorithm: Algorithm,
+    pub width: u32,        // 0 = 自动适配终端
+    pub height: u32,       // 0 = 按宽高比推算
+    pub monochrome: bool,
+    pub charset: String,
+    pub info: bool,
+    pub recursive: bool,
+    pub gif_once: bool,
+}
+\end{lstlisting}
+
+字符画的中间表示 \texttt{AsciiArt} 是一个二维网格，每个单元 \texttt{AsciiPixel} 同时携带映射后的字符与原始 RGB 颜色，使得``字符形状''与``色彩''两个信息维度相互独立——渲染层可自由决定是否着色：
+
+\begin{lstlisting}[caption={字符画中间表示（ascii/mod.rs）}]
+pub struct AsciiPixel {
+    pub char: char,
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+pub struct AsciiArt {
+    pub lines: Vec<Vec<AsciiPixel>>,
+}
+\end{lstlisting}
+
+渲染层通过泛型 trait 与中间表示解耦。\texttt{render} 方法接收 \texttt{impl Write} 而非固定的 \texttt{Stdout}，因此单元测试可以直接用内存缓冲区 \texttt{Cursor<Vec<u8>>} 捕获并断言 ANSI 转义序列：
+
+\begin{lstlisting}[caption={渲染抽象（render/mod.rs）}]
+pub trait Renderer<T> {
+    fn render(&self, out: &mut impl Write, data: &T) -> Result<()>;
+}
+
+pub struct Ansi { pub color: bool, pub monochrome: bool }
+
+impl Renderer<AsciiArt> for Ansi {
+    fn render(&self, out: &mut impl Write, art: &AsciiArt) -> Result<()> {
+        ansi::render(out, art, self.color, self.monochrome)
+    }
+}
+\end{lstlisting}
+
+\subsection{核心算法}
+
+\subsubsection{终端自适应尺寸解析}
+
+终端字符单元的高度约为宽度的两倍，直接按像素比例缩放会使图片纵向拉伸。设原图宽高为 $W_o \times H_o$，宽高比 $\alpha = H_o / W_o$，当用户只指定输出宽度 $w$（或自动取终端宽度）时，输出高度按下式补偿：
+
+\begin{equation}
+    h = \mathrm{round}(w \cdot \alpha \cdot 0.5)
+\end{equation}
+
+若计算宽度超过终端宽度则等比例收缩并给出告警，保证输出永不折行：
+
+\begin{lstlisting}[caption={尺寸解析核心逻辑（app.rs）}]
+let aspect = orig_h as f64 / orig_w as f64;
+let (mut w, mut h) = if conf.width == 0 && conf.height == 0 {
+    let new_w = term_w;
+    (new_w, (new_w as f64 * aspect * 0.5).round() as u32)
+} else if conf.width > 0 && conf.height == 0 {
+    (conf.width, (conf.width as f64 * aspect * 0.5).round() as u32)
+} else if conf.width == 0 && conf.height > 0 {
+    ((conf.height as f64 / (aspect * 0.5)).round() as u32, conf.height)
+} else {
+    (conf.width, conf.height)
+};
+\end{lstlisting}
+
+\subsubsection{亮度映射算法（lum）}
+
+默认算法分三步：首先用 Lanczos3 插值将图片精确缩放到目标字符网格尺寸；然后按 NTSC 加权公式计算每个像素的亮度：
+
+\begin{equation}
+    L = 0.299R + 0.587G + 0.114B
+\end{equation}
+
+最后将亮度线性映射到字符梯度（默认 \verb|" .:-=+*#%@"|，由暗到亮）的下标：
+
+\begin{equation}
+    idx = \left\lfloor \frac{L \cdot (n-1)}{255} \right\rfloor, \quad n = \text{字符集长度}
+\end{equation}
+
+\begin{lstlisting}[caption={亮度映射核心循环（ascii/lum.rs）}]
+let resized = img.resize_exact(new_width, new_height, Lanczos3);
+for y in 0..new_height {
+    for x in 0..new_width {
+        let rgb = resized.get_pixel(x, y).to_rgb();
+        let gray = (0.299 * rgb[0] as f64 + 0.587 * rgb[1] as f64
+            + 0.114 * rgb[2] as f64) as u8;
+        let idx = (gray as usize) * (char_set.len() - 1) / 255;
+        row.push(AsciiPixel { char: char_set[idx],
+            r: rgb[0], g: rgb[1], b: rgb[2] });
+    }
+}
+\end{lstlisting}
+
+\subsubsection{CLAHE 自适应直方图均衡化（lum-clahe）}
+
+低对比度图片经亮度映射后字符层次单一。CLAHE（Contrast Limited Adaptive Histogram Equalization）作为预处理步骤增强局部对比度，流程为：
+
+\begin{enumerate}
+    \item \textbf{分块统计}：将灰度图划分为 $8 \times 8$ 像素的 tile，分别统计 256 级直方图；
+    \item \textbf{对比度限制}：计算裁剪阈值 $clip = \max(\frac{N_{tile}}{256} \cdot c, 1)$（$c=2.0$ 为限制系数），将超出阈值的计数裁去并均匀再分配到所有灰度级，抑制噪声被过度放大；
+    \item \textbf{构建查找表}：对裁剪后的直方图求累积分布函数，归一化生成每个 tile 的映射表 $LUT[i] = \mathrm{round}(\frac{cdf(i)}{N_{tile}} \cdot 255)$；
+    \item \textbf{双线性插值}：每个像素取其周围四个相邻 tile 的 LUT 值做双线性插值，消除块状伪影。
+\end{enumerate}
+
+\begin{lstlisting}[caption={直方图裁剪与再分配（ascii/clahe.rs）}]
+let clip = ((pixel_count as f32 / 256.0) * clip_limit).max(1.0) as u32;
+let mut excess = 0u32;
+for h in &mut hist {
+    if *h > clip { excess += *h - clip; *h = clip; }
+}
+let redist = excess / 256;
+let remainder = excess % 256;
+for (i, h) in hist.iter_mut().enumerate() {
+    *h += redist;
+    if (i as u32) < remainder { *h += 1; }
+}
+\end{lstlisting}
+
+\subsubsection{Sobel 边缘检测算法（sobel）}
+
+该算法为本项目新增的轮廓风格转换：不再以亮度而是以``边缘强度''决定字符。首先在原始分辨率灰度图上做 Sobel 卷积：
+
+\begin{equation}
+    G_x = \begin{bmatrix} -1 & 0 & 1 \\ -2 & 0 & 2 \\ -1 & 0 & 1 \end{bmatrix} * I, \quad
+    G_y = \begin{bmatrix} -1 & -2 & -1 \\ 0 & 0 & 0 \\ 1 & 2 & 1 \end{bmatrix} * I, \quad
+    M = \sqrt{G_x^2 + G_y^2}
+\end{equation}
+
+得到梯度幅值图后再缩放到目标尺寸。由于字符集按``由暗到亮''排列，而轮廓风格希望边缘处使用视觉密度高的字符、平坦区域留白，因此对幅值取反 $inv = 255 - M$ 后再做下标映射；同时每个字符的颜色仍取自缩放后的原图，保留色彩信息：
+
+\begin{lstlisting}[caption={Sobel 幅值计算与反转映射（ascii/sobel.rs）}]
+let mag = ((gx * gx + gy * gy) as f64).sqrt().round() as u8;
+// ...
+let inv: u8 = 255 - edge_val;
+let idx = (inv as usize) * (char_set.len() - 1) / 255;
+let orig_pixel = orig_resized.get_pixel(x, y);
+row.push(AsciiPixel { char: char_set[idx],
+    r: orig_pixel[0], g: orig_pixel[1], b: orig_pixel[2] });
+\end{lstlisting}
+
+\subsubsection{GIF 动画播放}
+
+GIF 文件由 gif crate 解码为 RGBA 帧序列并读取逐帧延迟。播放时以帧为单位计时，将渲染本身的耗时从帧延迟中扣除，避免播放速度因终端渲染开销而变慢；循环次数依据 GIF 元数据（\texttt{Infinite}/\texttt{Finite}）与 \verb|--once| 选项共同决定：
+
+\begin{lstlisting}[caption={帧延迟补偿（app.rs）}]
+let delay_ms = if *delay < 2 { 100 } else { *delay as u64 * 10 };
+viuer::print(&dyn_img, &vcfg)?;
+let elapsed = frame_start.elapsed().as_millis() as u64;
+if elapsed < delay_ms {
+    std::thread::sleep(Duration::from_millis(delay_ms - elapsed));
+}
+frame_start = Instant::now();
+\end{lstlisting}
+
+\subsection{工程化与持续集成实践}
+
+本项目采用了相对专业的工程化与持续集成（CI）模式，代码质量由本地与远端两道自动化关卡共同保障：
+
+\begin{itemize}
+    \item \textbf{本地提交前检查}：通过 pre-commit 钩子（\texttt{.pre-commit-config.yaml}）在每次 \texttt{git commit} 前自动执行行尾空白清理、文件末尾修复、YAML 语法检查、大文件拦截，以及 \texttt{cargo fmt --check} 格式校验与 \texttt{cargo clippy -D warnings} 静态检查，问题在进入仓库前即被拦截；
+    \item \textbf{CI 质量门}：GitHub Actions 工作流（\texttt{rust.yml}）在每次 push 与 pull request 时自动执行格式检查、clippy 零警告检查与全量测试，任何一步失败即拒绝合入：
+\end{itemize}
+
+\begin{lstlisting}[language={},caption={CI 质量门（.github/workflows/rust.yml 节选）}]
+jobs:
+  check-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy -- -D warnings
+      - name: Run tests
+        run: cargo test
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{跨平台发布流水线}：推送版本 tag 后，CI 自动在五个目标平台（macOS x86\_64/aarch64、Linux musl x86\_64/aarch64、Windows MSVC）交叉编译 release 二进制，归档产物并自动发布到 GitHub Release，实现一次打 tag、全平台交付；
+    \item \textbf{文档工程化}：实验报告以 git submodule 形式独立成仓，其自身 CI 在每次推送后用 XeLaTeX 自动编译验证报告可构建，随后通过 \texttt{repository\_dispatch} 事件通知主仓库；主仓库的同步工作流（\texttt{latex.yml}）收到事件后自动将子模块指针更新到最新提交，并辅以每 6 小时的定时兜底同步，保证代码与文档始终一致。
+\end{itemize}
+
+这套``本地钩子 $\rightarrow$ CI 质量门 $\rightarrow$ 自动发布 $\rightarrow$ 文档联动''的流程使团队协作中的每一次变更都经过统一、可复现的自动化验证。
+
+\section{实验结果}
+
+\subsection{功能验证}
+
+在支持图像协议的终端（如 Windows Terminal、WezTerm、iTerm2）中，执行 \texttt{viua img/alpaca.png} 即可通过 Sixel/iTerm2 协议直接显示原图；在不支持图像协议的终端下，\texttt{halfblock} 模式以半块字符降级显示。测试图片如\autoref{fig:alpaca}所示。
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=.35\textwidth]{alpaca.png}
+    \caption{测试图片 alpaca.png}
+    \label{fig:alpaca}
+\end{figure}
+
+八种典型显示效果的终端截图如\autoref{fig:shots}所示，涵盖原图直显、半块字符、灰度输出以及三种算法的 ASCII 字符画与黑白字符画。
+
+% TODO: 截图后将各 \shotbox{xxx.png} 替换为
+%       \includegraphics[width=\linewidth]{xxx.png}
+\begin{figure}[!htbp]
+    \centering
+    \subfigure[\texttt{viua img/alpaca.png}]{
+        \begin{minipage}[b]{0.46\textwidth}
+            \centering
+            \shotbox{shot-image.png}
+        \end{minipage}
+    }
+    \subfigure[\texttt{viua -m img/alpaca.png}]{
+        \begin{minipage}[b]{0.46\textwidth}
+            \centering
+            \shotbox{shot-image-mono.png}
+        \end{minipage}
+    }
+    \subfigure[\texttt{viua halfblock img/alpaca.png}]{
+        \begin{minipage}[b]{0.46\textwidth}
+            \centering
+            \shotbox{shot-halfblock.png}
+        \end{minipage}
+    }
+    \subfigure[\texttt{viua halfblock -m img/alpaca.png}]{
+        \begin{minipage}[b]{0.46\textwidth}
+            \centering
+            \shotbox{shot-halfblock-mono.png}
+        \end{minipage}
+    }
+    \subfigure[\texttt{viua ascii img/alpaca.png}]{
+        \begin{minipage}[b]{0.46\textwidth}
+            \centering
+            \shotbox{shot-ascii-lum.png}
+        \end{minipage}
+    }
+    \subfigure[\texttt{viua ascii -a lum-clahe img/alpaca.png}]{
+        \begin{minipage}[b]{0.46\textwidth}
+            \centering
+            \shotbox{shot-ascii-clahe.png}
+        \end{minipage}
+    }
+    \subfigure[\texttt{viua ascii -a sobel img/alpaca.png}]{
+        \begin{minipage}[b]{0.46\textwidth}
+            \centering
+            \shotbox{shot-ascii-sobel.png}
+        \end{minipage}
+    }
+    \subfigure[\texttt{viua ascii -m img/alpaca.png}]{
+        \begin{minipage}[b]{0.46\textwidth}
+            \centering
+            \shotbox{shot-ascii-mono.png}
+        \end{minipage}
+    }
+    \caption{八种显示模式的功能验证截图}
+    \label{fig:shots}
+\end{figure}
+
+各项功能的验证结果汇总如\autoref{tab:features}所示。
+
+\begin{table}[!htbp]
+    \centering
+    \caption{功能验证结果}
+    \label{tab:features}
+    \begin{tabular}{llc}
+        \toprule
+        \multicolumn{1}{c}{功能} & \multicolumn{1}{c}{验证命令} & 结果 \\
+        \midrule
+        原图直显（默认） & \verb|viua img.png| & 通过 \\
+        ASCII 亮度映射 & \verb|viua ascii img.png| & 通过 \\
+        ASCII + CLAHE 增强 & \verb|viua ascii -a lum-clahe img.png| & 通过 \\
+        ASCII Sobel 轮廓 & \verb|viua ascii -a sobel img.png| & 通过 \\
+        半块字符模式 & \verb|viua halfblock img.png| & 通过 \\
+        自定义宽度/高度 & \verb|viua -w 60 img.png| & 通过 \\
+        灰度输出 & \verb|viua -m img.png| & 通过 \\
+        文件信息页脚 & \verb|viua -i img.png| & 通过 \\
+        自定义字符集 & \verb|viua ascii -s " .-+*#" img.png| & 通过 \\
+        多文件批处理 & \verb|viua a.jpg b.png| & 通过 \\
+        stdin 管道输入 & \verb|find . -name '*.png' \| viua| & 通过 \\
+        目录递归遍历 & \verb|viua -r ./photos| & 通过 \\
+        URL 远程图片 & \verb|viua https://.../img.png| & 通过 \\
+        GIF 动画循环/单次播放 & \verb|viua [--once] anim.gif| & 通过 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{自动化测试}
+
+项目包含 43 个单元测试与 5 个集成测试，执行 \texttt{cargo test} 全部通过：
+
+\begin{verbatim}
+running 43 tests
+test result: ok. 43 passed; 0 failed; 0 ignored
+
+Running tests\integration_tests.rs
+running 5 tests
+test result: ok. 5 passed; 0 failed; 0 ignored
+\end{verbatim}
+
+测试分布如\autoref{tab:tests}所示。单元测试覆盖 CLI 解析、配置构建、算法正确性（黑图映射到最暗字符、白图映射到最亮字符、边缘检测对高对比条带敏感、RGB 颜色保留、输出尺寸精确）与 ANSI 渲染（灰度模式不含颜色转义、彩色模式输出 \verb|ESC[38;2;r;g;b m| 序列）；集成测试基于 assert\_cmd 对可执行文件做端到端验证。上述 48 个用例同时作为 CI 质量门的准入门槛：每次 push 与 pull request 都会在 CI 中自动执行，未全部通过的变更无法合入主分支。
+
+\begin{table}[!htbp]
+    \centering
+    \caption{自动化测试分布（共 48 个用例，全部通过）}
+    \label{tab:tests}
+    \begin{tabular}{ccl}
+        \toprule
+        测试模块 & 用例数 & \multicolumn{1}{c}{覆盖内容} \\
+        \midrule
+        \texttt{cli}            & 14 & 子命令识别、各参数默认值与解析 \\
+        \texttt{config}         & 11 & Config 构建、算法与字符集映射 \\
+        \texttt{app}            & 5  & 文件大小格式化（B/KB/MB/GB） \\
+        \texttt{ascii::lum}     & 4  & 输出尺寸、黑白极值映射、RGB 保留 \\
+        \texttt{ascii::sobel}   & 4  & 输出尺寸、平坦图无边缘、对比边缘检出 \\
+        \texttt{ascii::charset} & 3  & 默认字符集非空、无重复、暗亮有序 \\
+        \texttt{render::ansi}   & 2  & ANSI 转义序列的有无与正确性 \\
+        集成测试                & 5  & 无参数出 Usage、缺失文件告警、转换/递归/高度端到端 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{开源项目借鉴说明}
+
+本项目主要借鉴了 \texttt{atanunq/viu}（及其配套库 \texttt{viuer}）与 \texttt{eternal-io/shoalart} 两个开源项目：
+
+\begin{itemize}
+    \item \textbf{viu / viuer}：借鉴其终端原图直显方案，本项目通过 viuer 库实现 Kitty/iTerm2/Sixel 图像协议输出与半块字符降级渲染；
+    \item \textbf{shoalart}：借鉴其图片转字符画的整体思路（缩放 $\rightarrow$ 亮度 $\rightarrow$ 字符梯度映射）。
+\end{itemize}
+
+在综合两者功能的基础上，本项目的主要新增工作包括：自研 Sobel 边缘检测轮廓风格转换算法与 CLAHE 局部对比度增强预处理；ANSI truecolor 彩色字符画渲染；GIF 动画的帧延迟补偿播放；以及 stdin 管道、URL 下载、目录递归等多来源输入支持。
+
+
+
+% 本模板主要适用于一些课程的平时论文以及期末论文，默认页边距为2.5cm，中文宋体，英文Times New Roman，字号为12pt（小四）。
+
+% 编译方式：\verb|xelatex -> bibtex -> xelatex*2|
+
+% 默认模板文件由以下四部分组成：
+
+% \begin{itemize}
+%     \item \texttt{main.tex} 主文件
+%     \item \texttt{reference.bib} 参考文献，使用bibtex
+%     \item \texttt{SYSUReport.sty} 文档格式控制，包括一些基础的设置，如页眉、标题、姓名等
+%     \item \texttt{figures} 放置图片的文件夹
+% \end{itemize}
+
+% 使用模板时，我们只需要在\texttt{main.tex} 中设置好对应的变量参数，当然也可以去\texttt{SYSUReport.sty}中修改对应的设置，制作属于你自己的模板。
+
+% 默认带有封面页以及目录页，目录部分页码和正文单独计数。
+
+% \section{一些插入功能}
+% \subsection{插入公式}
+
+% 行内公式$v-\varepsilon+\phi=2$。
+
+% 插入行间公式如\autoref{Euler}：
+
+% \begin{equation}
+%     v-\varepsilon+\phi=2
+%     \label{Euler}
+% \end{equation}
+
+% \subsection{插入图片}
+
+% SYSU校徽如\autoref{fig:SYSU}所示，注意这里使用了\verb|~\autoref{}|命令，也就是会自动生成“图”“式”等前缀，无需手动输入。
+
+% \begin{figure}[!htbp]
+%     \centering
+%     \includegraphics[width =.4\textwidth]{sysu.jpg}
+%     \caption{中山大学}
+%     \label{fig:SYSU}
+% \end{figure}
+
+% 插入上面图片的代码：
+
+% \begin{verbatim}
+%     \begin{figure}[!htbp]
+%         \centering
+%         \includegraphics[width =.4\textwidth]{sysu.jpg}
+%         \caption{中山大学}
+%         \label{fig:SYSU}
+%     \end{figure}
+% \end{verbatim}
+
+% \subsection{插入文本框}
+% 本模板定义了一个圆角灰底的文本框，使用简化命令\verb|\tbox{}|即可，如果你不喜欢，可以前往 \texttt{SYSUReport.sty}对其进行修改。
+
+% \tbox{
+%     这是一个圆角灰底的文本框
+% }
+
+% \subsection{插入表格}
+
+% 本模板文件如\autoref{doc}所示。
+
+% \begin{table}[!htbp]
+%     \centering
+%     \begin{tabular}{l|l}
+%         \hline
+%         文件名                  & 说明         \\
+%         \hline
+%         \texttt{main.tex}       & 主文件       \\
+%         \texttt{reference.bib}  & 参考文献     \\
+%         \texttt{SYSUReport.sty} & 文档格式控制 \\
+%         \texttt{figures}        & 图片文件夹   \\
+%         \hline
+%     \end{tabular}
+%     \caption{本模板文件组成}
+%     \label{doc}
+% \end{table}
+
+% \section{定理环境}
+% \begin{Theorem}
+% \end{Theorem}
+
+% \begin{Lemma}
+% \end{Lemma}
+
+% \begin{Corollary}
+% \end{Corollary}
+
+% \begin{Proposition}
+% \end{Proposition}
+
+% \begin{Definition}
+% \end{Definition}
+
+% \begin{Example}
+% \end{Example}
+
+% \begin{proof}
+% \end{proof}
+
+% \subsection{插入参考文献}
+
+% 直接使用\verb|\cite{}|即可。
+
+% 例如：此处引用了文献~\cite{0Isaac}。此处引用了文献~\cite{2016The}
+
+% \par 引用过的文献会自动出现在参考文献中。
+
+% \section{写在最后}
+
+% \subsection{致谢}
+
+% 本项目在\href{https://github.com/jweihe/UCAS_Latex_Template}{中国科学院大学模板}的基础上进行修改，感谢原作者的辛勤付出。
+
+% \subsection{发布地址}
+
+% \begin{itemize}
+%     \item Github: \url{https://github.com/NorthSecond/SYSU_Latex_Template}
+%     \item Overleaf: \url{https://www.overleaf.com/latex/templates/sysu-latex-template/dxwrhzbydxyq}
+%     \item TexPage: \\
+%           \url{https://www.texpage.com/template/21db014e-5065-448c-a6f2-545b983aee2d}
+% \end{itemize}
+
+% % =============================================
+% % Part 5： 参考文献
+% % =============================================
+% %在reference.bib文件中填写参考文献，此处自动生成
+
+% \newpage
+% \bibliographystyle{ieeetr}
+% \bibliography{reference.bib}
+
+\end{document}
