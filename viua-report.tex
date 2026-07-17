@@ -8,7 +8,7 @@
 \lessonTitle{Rust 语言与内存安全设计}
 \reportTitle{Viua: 终端图片查看与ASCII字符画转换器}
 \stuname{曹煌城 \quad 姚怀宇 \quad 叶嘉豪}
-\stuid{24336006  24336145  xxx}
+\stuid{24336006  24336145  24334157}
 \inst{软件工程学院}
 \major{软件工程}
 \date{\today}
@@ -112,8 +112,8 @@
         姓名 & 学号 & \multicolumn{1}{c}{分工} \\
         \midrule
         曹煌城 & 24336006      & （代码构建与功能完善） \\
-        姚怀宇 & 24336145 & （xxx） \\
-        叶嘉豪 & xxx      & （xxx） \\
+        姚怀宇 & 24336145      & （） \\
+        叶嘉豪 & 24334157      & （代码构建，异常修复） \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -401,62 +401,74 @@ jobs:
     \label{fig:alpaca}
 \end{figure}
 
-八种典型显示效果的终端截图如\autoref{fig:shots}所示，涵盖原图直显、半块字符、灰度输出以及三种算法的 ASCII 字符画与黑白字符画。
+八种典型显示效果的终端截图如\autoref{fig:shots1}和\autoref{fig:shots2}所示，涵盖原图直显、半块字符、灰度输出以及三种算法的 ASCII 字符画与黑白字符画。
 
 % TODO: 截图后将各 \shotbox{xxx.png} 替换为
 %       \includegraphics[width=\linewidth]{xxx.png}
 \begin{figure}[!htbp]
     \centering
+
     \subfigure[\texttt{viua img/alpaca.png}]{
         \begin{minipage}[b]{0.46\textwidth}
             \centering
-            \shotbox{shot-image.png}
+            \includegraphics[width=\linewidth]{figures/shot-image.png}
         \end{minipage}
     }
     \subfigure[\texttt{viua -m img/alpaca.png}]{
         \begin{minipage}[b]{0.46\textwidth}
             \centering
-            \shotbox{shot-image-mono.png}
+            \includegraphics[width=\linewidth]{figures/shot-image-mono.png}
         \end{minipage}
     }
+
     \subfigure[\texttt{viua halfblock img/alpaca.png}]{
         \begin{minipage}[b]{0.46\textwidth}
             \centering
-            \shotbox{shot-halfblock.png}
+            \includegraphics[width=\linewidth]{figures/shot-halfblock.png}
         \end{minipage}
     }
     \subfigure[\texttt{viua halfblock -m img/alpaca.png}]{
         \begin{minipage}[b]{0.46\textwidth}
             \centering
-            \shotbox{shot-halfblock-mono.png}
+            \includegraphics[width=\linewidth]{figures/shot-halfblock-mono.png}
         \end{minipage}
     }
+
+    \caption{八种显示模式的功能验证截图（上）}
+    \label{fig:shots1}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+
     \subfigure[\texttt{viua ascii img/alpaca.png}]{
         \begin{minipage}[b]{0.46\textwidth}
             \centering
-            \shotbox{shot-ascii-lum.png}
+            \includegraphics[width=\linewidth]{figures/shot-ascii-lum.png}
         \end{minipage}
     }
     \subfigure[\texttt{viua ascii -a lum-clahe img/alpaca.png}]{
         \begin{minipage}[b]{0.46\textwidth}
             \centering
-            \shotbox{shot-ascii-clahe.png}
+            \includegraphics[width=\linewidth]{figures/shot-ascii-clahe.png}
         \end{minipage}
     }
+
     \subfigure[\texttt{viua ascii -a sobel img/alpaca.png}]{
         \begin{minipage}[b]{0.46\textwidth}
             \centering
-            \shotbox{shot-ascii-sobel.png}
+            \includegraphics[width=\linewidth]{figures/shot-ascii-sobel.png}
         \end{minipage}
     }
     \subfigure[\texttt{viua ascii -m img/alpaca.png}]{
         \begin{minipage}[b]{0.46\textwidth}
             \centering
-            \shotbox{shot-ascii-mono.png}
+            \includegraphics[width=\linewidth]{figures/shot-ascii-mono.png}
         \end{minipage}
     }
-    \caption{八种显示模式的功能验证截图}
-    \label{fig:shots}
+
+    \caption{八种显示模式的功能验证截图（下）}
+    \label{fig:shots2}
 \end{figure}
 
 各项功能的验证结果汇总如\autoref{tab:features}所示。
