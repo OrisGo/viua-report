@@ -112,8 +112,8 @@
         姓名 & 学号 & \multicolumn{1}{c}{分工} \\
         \midrule
         曹煌城 & 24336006      & 代码构建与功能完善 \\
-        姚怀宇 & 24336145      & 项目设计与实现、文档撰写、CI工作流引入 \\
-        叶嘉豪 & 24334157      & 代码构建，异常修复 \\
+        姚怀宇 & 24336145      & 项目设计与实现、文档撰写、CI工作流管理 \\
+        叶嘉豪 & 24334157      & 代码构建、异常修复、演示视频录制 \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -189,7 +189,9 @@ viua/
     \end{tabular}
 \end{table}
 
-三种视图模式的分派逻辑位于 \texttt{app.rs}：\texttt{ascii} 模式走自研转换与渲染流水线；\texttt{image} 模式启用 Kitty/iTerm2/Sixel 图像协议直显原图；\texttt{halfblock} 模式关闭图像协议，回退到半块字符 \verb|▀| 渲染（每个字符单元用前景色与背景色表示上下两个像素），保证在任意终端下均可显示。
+三种视图模式的分派逻辑位于 \texttt{app.rs}：\texttt{ascii} 模式走自研转换与渲染流水线；\texttt{image} 模式启用 Kitty/iTerm2 图像协议直显原图；\texttt{halfblock} 模式关闭图像协议，回退到半块字符 \verb|▀| 渲染（每个字符单元用前景色与背景色表示上下两个像素），保证在任意终端下均可显示。
+
+需要说明的是，本项目借鉴 viu 的设计，将 Sixel 协议支持作为可选 Cargo feature 提供（\texttt{icy\_sixel} / \texttt{sixel}），而非默认编译。这主要是出于跨平台兼容性的妥协：默认构建仅依赖 Kitty/iTerm2 协议（viuer 内置），在 macOS 和使用原生支持该协议的终端（如 Kitty、WezTerm、iTerm2）上可直接显示原图；但 Windows 终端默认不支持上述协议，不加 feature 时只能降级到 halfblock 半块字符渲染，无法调用 \texttt{image} 模式直显。Windows Terminal（$\ge$1.22）需要通过 \texttt{---features icy\_sixel} 启用 Sixel 才能获得原图直显能力。将 Sixel 作为 feature 而非默认依赖，避免了 libsixel 编译障碍阻碍默认构建，同时让有需求的用户按需启用。
 
 \subsection{关键数据结构}
 
@@ -382,7 +384,7 @@ jobs:
 \end{lstlisting}
 
 \begin{itemize}
-    \item \textbf{跨平台发布流水线}：推送版本 tag 后，CI 自动在五个目标平台（macOS x86\_64/aarch64、Linux musl x86\_64/aarch64、Windows MSVC）交叉编译 release 二进制，归档产物并自动发布到 GitHub Release，实现一次打 tag、全平台交付；
+    \item \textbf{跨平台发布流水线}：推送版本 tag 后，CI 自动在四个目标平台（macOS aarch64、Linux musl x86\_64 与 aarch64、Windows MSVC x86\_64）交叉编译 release 二进制，归档产物并自动发布到 GitHub Release，实现一次打 tag、全平台交付；
     \item \textbf{文档工程化}：实验报告以 git submodule 形式独立成仓，其自身 CI 在每次推送后用 XeLaTeX 自动编译，验证报告始终可构建；主仓库的同步工作流（\texttt{latex.yml}）每 6 小时定时（并支持手动触发）将子模块指针更新到文档仓库的最新提交，保证代码与文档保持一致。
 \end{itemize}
 
@@ -518,7 +520,7 @@ test result: ok. 5 passed; 0 failed; 0 ignored
     \centering
     \caption{自动化测试分布（共 48 个用例，全部通过）}
     \label{tab:tests}
-    \begin{tabular}{ccl}
+    \begin{tabular}{ccp{24em}}
         \toprule
         测试模块 & 用例数 & \multicolumn{1}{c}{覆盖内容} \\
         \midrule
@@ -539,144 +541,9 @@ test result: ok. 5 passed; 0 failed; 0 ignored
 本项目主要借鉴了 \texttt{atanunq/viu}（及其配套库 \texttt{viuer}）与 \texttt{eternal-io/shoalart} 两个开源项目：
 
 \begin{itemize}
-    \item \textbf{viu / viuer}：借鉴其终端原图直显方案，本项目通过 viuer 库实现 Kitty/iTerm2/Sixel 图像协议输出与半块字符降级渲染；
+    \item \textbf{viu / viuer}：借鉴其终端原图直显方案，本项目通过 viuer 库实现图像协议输出与半块字符降级渲染；
     \item \textbf{shoalart}：借鉴其图片转字符画的整体思路（缩放 $\rightarrow$ 亮度 $\rightarrow$ 字符梯度映射）。
 \end{itemize}
 
 在综合两者功能的基础上，本项目的主要新增工作包括：自研 Sobel 边缘检测轮廓风格转换算法与 CLAHE 局部对比度增强预处理；ANSI truecolor 彩色字符画渲染；GIF 动画的帧延迟补偿播放；以及 stdin 管道、URL 下载、目录递归等多来源输入支持。
 
-
-
-% 本模板主要适用于一些课程的平时论文以及期末论文，默认页边距为2.5cm，中文宋体，英文Times New Roman，字号为12pt（小四）。
-
-% 编译方式：\verb|xelatex -> bibtex -> xelatex*2|
-
-% 默认模板文件由以下四部分组成：
-
-% \begin{itemize}
-%     \item \texttt{main.tex} 主文件
-%     \item \texttt{reference.bib} 参考文献，使用bibtex
-%     \item \texttt{SYSUReport.sty} 文档格式控制，包括一些基础的设置，如页眉、标题、姓名等
-%     \item \texttt{figures} 放置图片的文件夹
-% \end{itemize}
-
-% 使用模板时，我们只需要在\texttt{main.tex} 中设置好对应的变量参数，当然也可以去\texttt{SYSUReport.sty}中修改对应的设置，制作属于你自己的模板。
-
-% 默认带有封面页以及目录页，目录部分页码和正文单独计数。
-
-% \section{一些插入功能}
-% \subsection{插入公式}
-
-% 行内公式$v-\varepsilon+\phi=2$。
-
-% 插入行间公式如\autoref{Euler}：
-
-% \begin{equation}
-%     v-\varepsilon+\phi=2
-%     \label{Euler}
-% \end{equation}
-
-% \subsection{插入图片}
-
-% SYSU校徽如\autoref{fig:SYSU}所示，注意这里使用了\verb|~\autoref{}|命令，也就是会自动生成“图”“式”等前缀，无需手动输入。
-
-% \begin{figure}[!htbp]
-%     \centering
-%     \includegraphics[width =.4\textwidth]{sysu.jpg}
-%     \caption{中山大学}
-%     \label{fig:SYSU}
-% \end{figure}
-
-% 插入上面图片的代码：
-
-% \begin{verbatim}
-%     \begin{figure}[!htbp]
-%         \centering
-%         \includegraphics[width =.4\textwidth]{sysu.jpg}
-%         \caption{中山大学}
-%         \label{fig:SYSU}
-%     \end{figure}
-% \end{verbatim}
-
-% \subsection{插入文本框}
-% 本模板定义了一个圆角灰底的文本框，使用简化命令\verb|\tbox{}|即可，如果你不喜欢，可以前往 \texttt{SYSUReport.sty}对其进行修改。
-
-% \tbox{
-%     这是一个圆角灰底的文本框
-% }
-
-% \subsection{插入表格}
-
-% 本模板文件如\autoref{doc}所示。
-
-% \begin{table}[!htbp]
-%     \centering
-%     \begin{tabular}{l|l}
-%         \hline
-%         文件名                  & 说明         \\
-%         \hline
-%         \texttt{main.tex}       & 主文件       \\
-%         \texttt{reference.bib}  & 参考文献     \\
-%         \texttt{SYSUReport.sty} & 文档格式控制 \\
-%         \texttt{figures}        & 图片文件夹   \\
-%         \hline
-%     \end{tabular}
-%     \caption{本模板文件组成}
-%     \label{doc}
-% \end{table}
-
-% \section{定理环境}
-% \begin{Theorem}
-% \end{Theorem}
-
-% \begin{Lemma}
-% \end{Lemma}
-
-% \begin{Corollary}
-% \end{Corollary}
-
-% \begin{Proposition}
-% \end{Proposition}
-
-% \begin{Definition}
-% \end{Definition}
-
-% \begin{Example}
-% \end{Example}
-
-% \begin{proof}
-% \end{proof}
-
-% \subsection{插入参考文献}
-
-% 直接使用\verb|\cite{}|即可。
-
-% 例如：此处引用了文献~\cite{0Isaac}。此处引用了文献~\cite{2016The}
-
-% \par 引用过的文献会自动出现在参考文献中。
-
-% \section{写在最后}
-
-% \subsection{致谢}
-
-% 本项目在\href{https://github.com/jweihe/UCAS_Latex_Template}{中国科学院大学模板}的基础上进行修改，感谢原作者的辛勤付出。
-
-% \subsection{发布地址}
-
-% \begin{itemize}
-%     \item Github: \url{https://github.com/NorthSecond/SYSU_Latex_Template}
-%     \item Overleaf: \url{https://www.overleaf.com/latex/templates/sysu-latex-template/dxwrhzbydxyq}
-%     \item TexPage: \\
-%           \url{https://www.texpage.com/template/21db014e-5065-448c-a6f2-545b983aee2d}
-% \end{itemize}
-
-% % =============================================
-% % Part 5： 参考文献
-% % =============================================
-% %在reference.bib文件中填写参考文献，此处自动生成
-
-% \newpage
-% \bibliographystyle{ieeetr}
-% \bibliography{reference.bib}
-
-\end{document}
