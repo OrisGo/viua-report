@@ -28,9 +28,6 @@
 \renewcommand{\thesubsection}{\arabic{subsection}}
 \renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
 
-% 截图占位符：截图完成后将 \shotbox{...} 替换为对应的 \includegraphics
-\newcommand{\shotbox}[1]{\fbox{\parbox[c][3.2cm][c]{0.92\linewidth}{\centering 待补充截图\\[3pt] \texttt{figures/#1}}}}
-
 % 代码高亮设置
 \lstdefinelanguage{Rust}{
     keywords={as,break,const,continue,crate,dyn,else,enum,extern,false,fn,for,if,impl,in,let,loop,match,mod,move,mut,pub,ref,return,self,Self,static,struct,super,trait,true,type,unsafe,use,where,while},
@@ -119,7 +116,7 @@
 \end{table}
 
 \section{项目背景与目标}
-团队成员在使用fastfetch时，发现可以在终端中显示图片或字符艺术。而常见的终端图片显示器往往只实现其中一个功能——要么在终端中只能显示图片，要么只是把图片转为字符画输出。
+团队成员在使用 fastfetch 时，发现可以在终端中显示图片或字符艺术。而常见的终端图片显示器往往只实现其中一个功能——要么在终端中只能显示图片，要么只是把图片转为字符画输出。
 
 故本项目：Viua 将两种功能结合在一起，使得用户既能够在终端中查看图片，同时也能够查看字符画艺术。
 
@@ -149,7 +146,7 @@ $\rightarrow$ 图片解码 $\rightarrow$ 尺寸自适应 $\rightarrow$ 按模式
 \begin{verbatim}
 viua/
 ├── Cargo.toml
-└── src/
+├── src/
     ├── main.rs          # 入口：子命令分派 + 错误处理
     ├── cli.rs           # CLI 参数定义 (clap)
     ├── config.rs        # 配置结构体 + ViewMode / Algorithm 枚举
@@ -164,6 +161,8 @@ viua/
     └── render/
         ├── mod.rs       # Renderer<T> trait
         └── ansi.rs      # ANSI truecolor 终端输出
+└── tests/
+    └── integration_tests.rs  # 集成测试
 \end{verbatim}
 
 这种设计使转换算法与输出设备完全解耦：新增一种转换算法只需在 \texttt{ascii/} 下增加一个模块并在 \texttt{Algorithm} 枚举中注册；新增一种输出目标（如 HTML）只需为其实现 \texttt{Renderer<AsciiArt>}。
@@ -370,7 +369,7 @@ frame_start = Instant::now();
     \item \textbf{CI 质量门}：GitHub Actions 工作流（\texttt{rust.yml}）在每次 push 与 pull request 时自动执行格式检查、clippy 零警告检查与全量测试，任何一步失败即拒绝合入：
 \end{itemize}
 
-\begin{lstlisting}[language={},caption={CI 质量门（.github/workflows/rust.yml 节选）}]
+\begin{lstlisting}[language={},caption={CI 工作流（.github/workflows/rust.yml 节选）}]
 jobs:
   check-and-test:
     runs-on: ubuntu-latest
@@ -381,6 +380,34 @@ jobs:
         run: cargo clippy -- -D warnings
       - name: Run tests
         run: cargo test
+
+  build-check:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+          - os: windows-latest
+    steps:
+      - name: Check compilation
+        run: cargo check
+
+  build-and-deploy:
+    needs: [check-and-test]
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      matrix:
+        include:
+          - { os: macos-latest,  TARGET: aarch64-apple-darwin }
+          - { os: ubuntu-latest, TARGET: x86_64-unknown-linux-musl }
+          - { os: ubuntu-latest, TARGET: aarch64-unknown-linux-musl }
+          - { os: windows-latest, TARGET: x86_64-pc-windows-msvc }
+    steps:
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.TARGET }}
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
 \end{lstlisting}
 
 \begin{itemize}
@@ -405,8 +432,6 @@ jobs:
 
 八种典型显示效果的终端截图如\autoref{fig:shots1}和\autoref{fig:shots2}所示，涵盖原图直显、半块字符、灰度输出以及三种算法的 ASCII 字符画与黑白字符画。
 
-% TODO: 截图后将各 \shotbox{xxx.png} 替换为
-%       \includegraphics[width=\linewidth]{xxx.png}
 \begin{figure}[!htbp]
     \centering
 
@@ -493,7 +518,7 @@ jobs:
         文件信息页脚 & \verb|viua -i img.png| & 通过 \\
         自定义字符集 & \verb|viua ascii -s " .-+*#" img.png| & 通过 \\
         多文件批处理 & \verb|viua a.jpg b.png| & 通过 \\
-        stdin 管道输入 & \verb|find . -name '*.png' \| viua| & 通过 \\
+        stdin 管道输入 & \verb+find . -name '*.png' | viua+ & 通过 \\
         目录递归遍历 & \verb|viua -r ./photos| & 通过 \\
         URL 远程图片 & \verb|viua https://.../img.png| & 通过 \\
         GIF 动画循环/单次播放 & \verb|viua [--once] anim.gif| & 通过 \\
@@ -545,7 +570,7 @@ test result: ok. 5 passed; 0 failed; 0 ignored
     \item \textbf{shoalart}：借鉴其图片转字符画的整体思路（缩放 $\rightarrow$ 亮度 $\rightarrow$ 字符梯度映射）。
 \end{itemize}
 
-在综合两者功能的基础上，本项目的主要新增工作包括：自研 Sobel 边缘检测轮廓风格转换算法与 CLAHE 局部对比度增强预处理；ANSI truecolor 彩色字符画渲染；GIF 动画的帧延迟补偿播放；以及 stdin 管道、URL 下载、目录递归等多来源输入支持。
+在综合两者功能的基础上，本项目的主要贡献包括：Sobel 边缘检测轮廓风格转换算法与 CLAHE 局部对比度增强预处理；此外，还从实用角度扩展了 URL 远程下载与基于路径列表的 stdin 管道输入等输入方式。
 
 \end{document}
 
